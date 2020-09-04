@@ -7,13 +7,13 @@
 #include<stdlib.h>
 #include<iostream>
 
-#define popsize 20                                              //种群规模
+#define popsize 126                                             //种群规模
 #define num_T  4                                                 //向量邻居的个数
 #define p_variate 0.2											 //变异概率
 #define SBX_n 2													 //分布指标 n越大表示子代和父代更接近
 #define apap_x 400												 //自适应变异参数
 #define DE_F 0.5												 //DE算子的缩放因子
-#define num_vector 15											//参考向量的个数
+#define num_vector 35											//参考向量的个数
 
 class individual;
 class populatioon;
@@ -24,6 +24,7 @@ vector<individual> EP;											 //外部种群
 double p_select_concrete[dimension][concrete_service_num];		 //记录当前EP中每维每个具体服务出现的概率
 
 vector<individual> pop_temporary;									 //存放需要进行用拥挤度选择的那层个体
+vector<double> deerta_data;										//每代的德尔塔数据
 
 class individual
 {
@@ -38,7 +39,7 @@ public:
 	
 	///////////////////////////////////
 	// 小种群
-	int source;													 //解的来源 2-初始化的解  0-附近邻居，1-其他邻居 3-自身种群		
+	int source;													 //解的来源 2-初始化的解  0-附近邻居，1-其他邻居 3-随机生成		
 	int rank;													 //个体所在种群的非支配等级
 	double value_g;												 //个体所在当前子种群的切比雪夫函数值
 };
@@ -126,7 +127,8 @@ public:
 	void individual_assign_offspring_pop(individual x);				//将个体分配到子种群里
 	void merge();												//将subpop与offspring_pop合并在一起
 	void eliminate();											//将合并后的种群大小消减为popsize
-
+	void update_ep_nsga_moead();
+	void update_deerta(int dd,int L);
 };
 
 bool operator<(individual a, individual b);
@@ -1383,7 +1385,7 @@ int population::distance_subpop_index(int x)
 	if (index.size() == 0)
 		return -2;														//如果较远种群里没有解返回0
 	if (index.size() == 1 && subpop[index[0]].size() == 1)				//如果较远的只有一个种群且种群中只有一个解则返回0
-		return -2;
+		return -3;
 	if (index.size() == 1 && subpop[index[0]].size() > 1)				//较远只有一个种群，但是种群中有多个解
 		return -1;
 	if (index.size() > 1)
@@ -1392,7 +1394,7 @@ int population::distance_subpop_index(int x)
 		return index[a];
 	}
 }
-
+/*
 void population::make_offspring(decision_space space)
 {
 	for (int i = 0; i < num_vector; i++)
@@ -1423,6 +1425,9 @@ void population::make_offspring(decision_space space)
 					} while (x1 == x2);
 					individual a = tempoprary_pop[x1];
 					individual b = tempoprary_pop[x2];
+					cout << "参与交配的父代是" << endl;
+					a.print();
+					b.print();
 					individual_cross(a, b);
 					p_variation(a, space);
 					p_variation(b, space);
@@ -1445,6 +1450,9 @@ void population::make_offspring(decision_space space)
 						} while (x1 == x2);
 						individual a = tem_sum_pop[x1];
 						individual b = tem_sum_pop[x2];
+						cout << "参与交配的父代是" << endl;
+						a.print();
+						b.print();
 						individual_cross(a, b);
 						p_variation(a, space);
 						p_variation(b, space);
@@ -1507,6 +1515,9 @@ void population::make_offspring(decision_space space)
 						} while (x1 == x2);
 						individual a = subpop[x][x1];
 						individual b = subpop[x][x2];
+						cout << "参与交配的父代是" << endl;
+						a.print();
+						b.print();
 						individual_cross(a, b);
 						p_variation(a, space);
 						p_variation(b, space);
@@ -1530,9 +1541,184 @@ void population::make_offspring(decision_space space)
 					int x4 = rand() % subpop[x2].size();
 					individual a = subpop[x1][x3];
 					individual b = subpop[x2][x4];
+					cout << "参与交配的父代是" << endl;
+					a.print();
+					b.print();
 					individual_cross(a, b);
 					p_variation(a, space);
 					p_variation(b, space);
+					a.source = 1;
+					b.source = 1;
+					individual_assign_offspring_pop(a);
+					individual_assign_offspring_pop(b);
+					cout << "5";
+				}
+			}
+		}
+	}
+}
+*/
+
+void population::update_ep_nsga_moead()
+{
+	for (int i = 0; i < num_vector; i++)
+	{
+		for (int j = 0; j < subpop[i].size(); j++)
+			update_ep(subpop[i][j]);
+	}
+}
+
+void population::make_offspring(decision_space space)
+{
+	for (int i = 0; i < num_vector; i++)
+	{
+		for (int j = 0; j < subpop[i].size(); j++)
+		{
+			if (rand() % 100 / 100.0 < deerta)							//从邻居种群中选择产生后代
+			{
+				vector<individual> tempoprary_pop;
+				vector<individual> tem_sum_pop;
+				for (int k = 0; k < num_T; k++)
+				{
+					for (int q = 0; q < subpop[neighbor_index[i][k]].size(); q++)
+					{
+						tem_sum_pop.push_back(subpop[neighbor_index[i][k]][q]);
+						if (subpop[neighbor_index[i][k]][q].rank == 1)
+							tempoprary_pop.push_back(subpop[neighbor_index[i][k]][q]);
+					}
+				}
+				if (tempoprary_pop.size() >0)
+				{														//非支配个体数个
+					int x1 = rand() % tempoprary_pop.size();
+					individual a = subpop[i][j];
+					individual b = tempoprary_pop[x1];
+					individual_cross(a, b);
+					variation(a, space);
+					variation(b, space);
+					a.source = 0;
+					b.source = 0;
+					individual_assign_offspring_pop(a);
+					individual_assign_offspring_pop(b);
+					cout << "1";
+				}
+				else
+				{														//非支配个体数小于2个，将相邻的种群合并，随机选择父代进行交配
+					if (tem_sum_pop.size() >= 2)
+					{													//如果相邻种群的个体综述>=2，才进行交配，否则不进行交配												
+						int x1 = rand() % tem_sum_pop.size();
+						individual a = subpop[i][j];
+						individual b = tem_sum_pop[x1];
+						individual_cross(a, b);
+						variation(a, space);
+						variation(b, space);
+						a.source = 0;
+						b.source = 0;
+						individual_assign_offspring_pop(a);
+						individual_assign_offspring_pop(b);
+						cout << "2";
+					}
+				}
+				tempoprary_pop.clear();
+				tem_sum_pop.clear();
+			}
+			else
+			{																//从较远的子种群中选择个体
+				if (distance_subpop_index(i) < 0)
+				{
+					if (distance_subpop_index(i) == -2)						//较远种群中没有解，则随机生成一个新解
+					{
+						individual a;
+						a.source = 2;
+						a.random_select();
+						a.cal_value(space);
+						a.source = 1;
+						individual_assign_offspring_pop(a);
+						cout << "3";
+					}
+					if (distance_subpop_index(i) == -3)						//较远种群中有且只有1个解，则利用这个解交配
+					{
+						int x;
+						for (int p = 0; p < num_vector; p++)
+						{
+							int flag = 0;
+							for (int w = 0; w < num_T; w++)
+							{
+								if (p == neighbor_index[i][w])
+								{
+									flag = 1;
+									break;
+								}
+							}
+							if (flag)
+								continue;
+							else
+							{
+								if (subpop[p].size() > 0)
+								{
+									x = p;
+									break;
+								}
+							}
+						}
+						individual a = subpop[i][j];
+						individual b = subpop[x][0];
+						individual_cross(a, b);
+						variation(a, space);
+						variation(b, space);
+						a.source = 1;
+						b.source = 1;
+						individual_assign_offspring_pop(a);
+						individual_assign_offspring_pop(b);
+						cout << "4";
+					}
+					if (distance_subpop_index(i) == -1)						//较远的只有一个种群有解且有多个解
+					{
+						int x;
+						for (int p = 0; p < num_vector; p++)
+						{
+							int flag = 0;
+							for (int w = 0; w < num_T; w++)
+							{
+								if (p == neighbor_index[i][w])
+								{
+									flag = 1;
+									break;
+								}
+							}
+							if (flag)
+								continue;
+							else
+							{
+								if (subpop[p].size() > 0)
+								{
+									x = p;
+									break;
+								}
+							}
+						}
+						int x1 = rand() % subpop[x].size();
+						individual a = subpop[i][j];
+						individual b = subpop[x][x1];
+						individual_cross(a, b);
+						variation(a, space);
+						variation(b, space);
+						a.source = 1;
+						b.source = 1;
+						individual_assign_offspring_pop(a);
+						individual_assign_offspring_pop(b);
+						cout << "4";
+					}
+				}
+				else
+				{
+					int x1 = distance_subpop_index(i);
+					
+					int x3 = rand() % subpop[x1].size();
+					individual a = subpop[x1][x3];
+					individual b = subpop[i][j];
+					individual_cross(a, b);
+					variation(a, space);
+					variation(b, space);
 					a.source = 1;
 					b.source = 1;
 					individual_assign_offspring_pop(a);
@@ -1550,7 +1736,24 @@ void population::merge()
 	{
 		for (int j = 0; j < offspring_pop[i].size(); j++)
 		{
-			subpop[i].push_back(offspring_pop[i][j]);
+			
+			int flag = 1;													//1-不同的解，可以加入种群  0-存在相同的解
+			for (int k = 0; k < subpop[i].size(); k++)
+			{
+				int count = 0;													//个体选择的相同的个数
+				for (int p = 0; p < dimension; p++)
+				{
+					if (subpop[i][k].select[p] == offspring_pop[i][j].select[p])
+						count++;
+				}
+				if (count == dimension)
+				{
+					flag = 0;
+					break;
+				}
+			}
+			if(flag)
+				subpop[i].push_back(offspring_pop[i][j]);
 		}
 	}
 	for (int i = 0; i < num_vector; i++)
@@ -1677,4 +1880,58 @@ void population::eliminate()
 			sum_popsize--;
 		}
 	} while (sum_popsize > popsize);
+}
+
+int n0=0;														//新解中来自附近区域交配的个数
+int n1=0;														//新解中来自较远区域交配的个数
+void population::update_deerta(int dd,int L)
+{
+	if (dd % L == 0)
+	{
+		if (n0 + n1 == 0)
+			deerta = 0;
+		else
+			deerta = n0/((n0+n1)*1.0);
+		if (deerta < 0.2)
+			deerta = 0.8;
+		if (deerta > 0.8)
+			deerta = 0.2;
+		n0 = 0;
+		n1 = 0;
+	}
+	else
+	{
+		for (int i = 0; i < num_vector; i++)
+		{
+			for (int j = 0; j < subpop[i].size(); j++)
+			{
+				if (subpop[i][j].source == 0)
+					n0++;
+				if (subpop[i][j].source == 1)
+					n1++;
+			}
+		}
+	}
+	for (int i = 0; i < num_vector; i++)							//每一代计算n0,n1后清除掉source
+	{
+		for (int j = 0; j < subpop[i].size(); j++)
+		{
+			subpop[i][j].source = 4;
+		}
+	}
+	deerta_data.push_back(deerta);
+}
+
+void save_deerta()
+{
+	string str1 = ".\\data\\num_update\\";
+	string str2 = "deerta_data.xls";
+	str2 = str1 + str2;
+	ofstream out(str2);
+	for (int i = 0; i <deerta_data.size(); i++)
+	{
+		
+		out << deerta_data[i] << endl;
+	}
+	out.close();
 }

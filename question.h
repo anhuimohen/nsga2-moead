@@ -5,17 +5,17 @@
 #include<iomanip>
 #define dimension 10                                                //决策空间的维度
 #define concrete_service_num 10                                     //具体服务的个数
-#define objective 3												   //目标数或者属性数
+#define objective 5												   //目标数或者属性数
 #define ob1_max 1000                                               //目标的最大值,cost
 #define ob2_max 100                                                //time
 #define ob3_max 10                                                 //other
 using namespace std;
-int ob_cal_mode[objective] = { 0,0,1};                            //目标值计算方式 0-相加 1-相乘
+int ob_cal_mode[objective] = { 0,0,1,1,1};                            //目标值计算方式 0-相加 1-相乘
 class service                                                      //基本服务单元
 {
 public:
 	double attribute_value[objective][2];                          //属性值，0-实际值 1-归一化后的值
-	int attribute_flag[objective] = { 0,0,1};                     //属性极性，0-消极属性 1-积极属性
+	int attribute_flag[objective] = { 0,0,1,1,1};                     //属性极性，0-消极属性 1-积极属性
 	void init();
 	void print();
 
